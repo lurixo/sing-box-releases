@@ -103,6 +103,11 @@ echo "Downloading $download_url"
 
 # Download to temp file
 tmp_file=$(mktemp)
+tmp_dir=""
+
+# Ensure cleanup on exit
+trap 'rm -rf "$tmp_file" "$tmp_dir" 2>/dev/null' EXIT
+
 if [ -n "$GITHUB_TOKEN" ]; then
   curl --fail -L -o "$tmp_file" -H "Authorization: token ${GITHUB_TOKEN}" "$download_url"
 else
@@ -111,7 +116,6 @@ fi
 
 curl_exit_status=$?
 if [ $curl_exit_status -ne 0 ]; then
-  rm -f "$tmp_file"
   echo "Download failed!"
   exit $curl_exit_status
 fi
@@ -124,16 +128,26 @@ tmp_dir=$(mktemp -d)
 if [ "$os" = "windows" ]; then
   # Extract from zip for Windows
   unzip -q "$tmp_file" -d "$tmp_dir"
-  mv "$tmp_dir/sing-box.exe" "${INSTALL_DIR}/${BINARY_NAME}.exe"
+  # Find sing-box.exe in extracted files
+  binary_path=$(find "$tmp_dir" -name "sing-box.exe" -type f | head -n 1)
+  if [ -z "$binary_path" ]; then
+    echo "Failed to find sing-box.exe in archive!"
+    exit 1
+  fi
+  mv "$binary_path" "${INSTALL_DIR}/${BINARY_NAME}.exe"
   chmod +x "${INSTALL_DIR}/${BINARY_NAME}.exe"
 else
   # Extract from tar.gz for Linux/Darwin
   tar -xzf "$tmp_file" -C "$tmp_dir"
-  mv "$tmp_dir/sing-box" "${INSTALL_DIR}/${BINARY_NAME}"
+  # Find sing-box binary in extracted files
+  binary_path=$(find "$tmp_dir" -name "sing-box" -type f | head -n 1)
+  if [ -z "$binary_path" ]; then
+    echo "Failed to find sing-box in archive!"
+    exit 1
+  fi
+  mv "$binary_path" "${INSTALL_DIR}/${BINARY_NAME}"
   chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 fi
-
-rm -rf "$tmp_dir" "$tmp_file"
 
 # Create systemd service if systemd exists
 if [ -d "/etc/systemd/system" ]; then
