@@ -222,11 +222,12 @@ jobs:
           mkdir -p clients/android/app/libs
           cp libbox.aar clients/android/app/libs/
 
-      - name: Update package name and ABI filter
+      - name: Update applicationId and ABI filter
         run: |
           cd sing-box/clients/android
-          sed -i 's/io\.nekohasekai\.sfa/io.quic_go.sfa/g' app/build.gradle
-          sed -i '/defaultConfig {/a\        ndk {\n            abiFilters "arm64-v8a"\n        }' app/build.gradle
+          sed -i 's/applicationId "io.nekohasekai.sfa"/applicationId "io.quic_go.sfa"/' app/build.gradle
+          sed -i '/defaultConfig {/a\        ndk { abiFilters "arm64-v8a" }' app/build.gradle
+          grep -A 5 "defaultConfig {" app/build.gradle | head -10
 
       - name: Decode Keystore
         run: |
