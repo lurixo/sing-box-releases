@@ -244,7 +244,7 @@ jobs:
         run: |
           cd sing-box/clients/android
           VERSION="${{ github.event.inputs.version }}"
-          VERSION_CODE=$(date -u +%Y%m%d%H)
+          VERSION_CODE=$(date -u +%s)
           echo "VERSION_NAME=$VERSION" > version.properties
           echo "VERSION_CODE=$VERSION_CODE" >> version.properties
           echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
