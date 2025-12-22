@@ -144,7 +144,6 @@ jobs:
       - name: Setup OpenJDK
         run: |
           sudo apt update && sudo apt install -y openjdk-17-jdk-headless
-          /usr/lib/jvm/java-17-openjdk-amd64/bin/java --version
 
       - name: Checkout sing-box
         uses: actions/checkout@v4
@@ -164,38 +163,58 @@ jobs:
         run: |
           cd sing-box/clients/android
           git fetch origin dev:dev 2>/dev/null || git fetch origin main:main 2>/dev/null || true
-          git checkout dev 2>/dev/null || git checkout main 2>/dev/null || echo "Using current submodule commit"
+          git checkout dev 2>/dev/null || git checkout main 2>/dev/null || true
 
-      - name: Remove naive outbound from build_libbox
+      - name: Extract tags from source
+        id: extract-tags
         run: |
           cd sing-box
           FILE="cmd/internal/build_libbox/main.go"
-          echo "=== Original sharedTags ==="
-          grep 'sharedTags = append' "$FILE" || true
-          sed -i 's/, "with_naive_outbound"//g' "$FILE"
-          sed -i 's/"with_naive_outbound", //g' "$FILE"
-          sed -i 's/"with_naive_outbound"//g' "$FILE"
-          echo ""
-          echo "=== Modified sharedTags ==="
-          grep 'sharedTags = append' "$FILE" || true
+          
+          SHARED_TAGS=$(grep -oP '"with_[^"]+"|"badlinkname"|"tfogo_checklinkname0"' "$FILE" | \
+                        tr -d '"' | \
+                        grep -v 'with_naive_outbound' | \
+                        sort -u | \
+                        tr '\n' ',' | \
+                        sed 's/,$//')
+          
+          MEMC_TAGS=$(grep -A1 'memcTags = append' "$FILE" | \
+                      grep -oP '"with_[^"]+"' | \
+                      tr -d '"' | \
+                      tr '\n' ',' | \
+                      sed 's/,$//')
+          
+          if [ -n "$MEMC_TAGS" ]; then
+            ALL_TAGS="${SHARED_TAGS},${MEMC_TAGS}"
+          else
+            ALL_TAGS="${SHARED_TAGS}"
+          fi
+          
+          echo "Extracted tags (naive excluded): $ALL_TAGS"
+          echo "tags=$ALL_TAGS" >> $GITHUB_OUTPUT
 
       - name: Build library
         run: |
           cd sing-box
           make lib_install
           export PATH="$PATH:$(go env GOPATH)/bin"
-          make lib_android
+          
+          gomobile bind -v \
+            -androidapi 21 \
+            -javapkg=io.nekohasekai \
+            -libname=box \
+            -trimpath \
+            -buildvcs=false \
+            -tags="${{ steps.extract-tags.outputs.tags }}" \
+            -ldflags="-X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -s -w -buildid= -checklinkname=0" \
+            ./experimental/libbox
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
       - name: Verify libbox.aar
         run: |
           cd sing-box
-          if [ ! -f "libbox.aar" ]; then
-            echo "Error: libbox.aar not found!"
-            exit 1
-          fi
-          echo "libbox.aar size: $(ls -lh libbox.aar)"
+          ls -lh libbox.aar
 
       - name: Prepare Android client
         run: |
@@ -232,17 +251,8 @@ jobs:
       - name: Rename APK
         run: |
           cd sing-box/clients/android/app/build/outputs/apk/other/release
-          find . -type f -name "*.apk" ! -name "*arm64-v8a*" -delete 2>/dev/null || true
-          APK_FILE=$(ls *arm64-v8a*.apk 2>/dev/null | head -n 1 || ls *.apk 2>/dev/null | head -n 1)
-          TARGET_NAME="SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
-          if [ -n "$APK_FILE" ]; then
-            if [ "$APK_FILE" != "$TARGET_NAME" ]; then
-              mv "$APK_FILE" "$TARGET_NAME"
-            fi
-          else
-            echo "Error: No APK found!"
-            exit 1
-          fi
+          APK_FILE=$(ls *.apk | head -n 1)
+          mv "$APK_FILE" "SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
