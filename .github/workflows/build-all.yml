@@ -194,6 +194,16 @@ jobs:
           echo "Extracted tags (naive excluded): $ALL_TAGS"
           echo "tags=$ALL_TAGS" >> $GITHUB_OUTPUT
 
+      - name: Change update channel
+        run: |
+          cd sing-box/clients/android
+          # 替换更新检查的仓库地址
+          sed -i 's|SagerNet/sing-box|lurixo/sing-box-releases|g' \
+            app/src/other/java/io/nekohasekai/sfa/vendor/GitHubUpdateChecker.kt
+          # 验证修改
+          echo "=== Modified RELEASES_URL ==="
+          grep "RELEASES_URL" app/src/other/java/io/nekohasekai/sfa/vendor/GitHubUpdateChecker.kt
+
       - name: Build library
         run: |-
           cd sing-box
@@ -290,6 +300,19 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+
+      - name: Generate version metadata
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          VERSION_CODE=$(date +%Y%m%d%H)
+          cat > dist/SFA-version-metadata.json << EOF
+          {
+              "version_code": ${VERSION_CODE},
+              "version_name": "${VERSION}"
+          }
+          EOF
+          echo "=== Generated metadata ==="
+          cat dist/SFA-version-metadata.json
 
       - name: Delete older releases
         uses: dev-drprasad/delete-older-releases@v0.3.4
