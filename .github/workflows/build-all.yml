@@ -199,9 +199,15 @@ jobs:
           cd sing-box
           make lib_install
           export PATH="$PATH:$(go env GOPATH)/bin"
-          gomobile bind -v -androidapi 21 -javapkg=io.nekohasekai -libname=box \
+          
+          gomobile bind -v \
+            -androidapi 21 \
+            -javapkg=io.nekohasekai \
+            -libname=box \
+            -trimpath \
+            -buildvcs=false \
             -tags="${{ steps.extract-tags.outputs.tags }}" \
-            -ldflags="-X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -buildid= -checklinkname=0" \
+            -ldflags="-X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -s -w -buildid= -checklinkname=0" \
             ./experimental/libbox
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
