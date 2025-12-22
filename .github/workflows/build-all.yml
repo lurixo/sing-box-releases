@@ -26,7 +26,7 @@ jobs:
           cache: false
 
       - name: Checkout sing-box
-        uses: actions/checkout@v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: SagerNet/sing-box
           ref: ${{ github.event.inputs.sing_box_branch }}
@@ -77,10 +77,9 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ^1.25.4
-          cache: false
 
       - name: Checkout sing-box
-        uses: actions/checkout@v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: SagerNet/sing-box
           ref: ${{ github.event.inputs.sing_box_branch }}
@@ -124,7 +123,7 @@ jobs:
           path: sing-box/dist/*
 
   build_android:
-    name: Build Android (arm64-v8a, no naive)
+    name: Build Android (arm64-v8a)
     runs-on: ubuntu-latest
     env:
       JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
@@ -140,13 +139,15 @@ jobs:
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r28
+          local-cache: true
 
       - name: Setup OpenJDK
-        run: |
+        run: |-
           sudo apt update && sudo apt install -y openjdk-17-jdk-headless
+          /usr/lib/jvm/java-17-openjdk-amd64/bin/java --version
 
       - name: Checkout sing-box
-        uses: actions/checkout@v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: SagerNet/sing-box
           ref: ${{ github.event.inputs.sing_box_branch }}
@@ -163,7 +164,7 @@ jobs:
         run: |
           cd sing-box/clients/android
           git fetch origin dev:dev 2>/dev/null || git fetch origin main:main 2>/dev/null || true
-          git checkout dev 2>/dev/null || git checkout main 2>/dev/null || true
+          git checkout dev 2>/dev/null || git checkout main 2>/dev/null || echo "Using current submodule commit"
 
       - name: Extract tags from source
         id: extract-tags
@@ -194,15 +195,11 @@ jobs:
           echo "tags=$ALL_TAGS" >> $GITHUB_OUTPUT
 
       - name: Build library
-        run: |
+        run: |-
           cd sing-box
           make lib_install
           export PATH="$PATH:$(go env GOPATH)/bin"
-          
-          gomobile bind -v \
-            -androidapi 21 \
-            -javapkg=io.nekohasekai \
-            -libname=box \
+          gomobile bind -v -androidapi 21 -javapkg=io.nekohasekai -libname=box \
             -trimpath \
             -buildvcs=false \
             -tags="${{ steps.extract-tags.outputs.tags }}" \
@@ -214,7 +211,17 @@ jobs:
       - name: Verify libbox.aar
         run: |
           cd sing-box
-          ls -lh libbox.aar
+          if [ ! -f "libbox.aar" ]; then
+            echo "Error: libbox.aar not found!"
+            exit 1
+          fi
+          echo "libbox.aar size: $(ls -lh libbox.aar)"
+
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle
+          key: gradle-${{ hashFiles('**/*.gradle') }}
 
       - name: Prepare Android client
         run: |
@@ -222,12 +229,11 @@ jobs:
           mkdir -p clients/android/app/libs
           cp libbox.aar clients/android/app/libs/
 
-      - name: Update applicationId and ABI filter
+      - name: Update package name and ABI filter
         run: |
           cd sing-box/clients/android
-          sed -i 's/applicationId "io.nekohasekai.sfa"/applicationId "io.quic_go.sfa"/' app/build.gradle
-          sed -i '/defaultConfig {/a\        ndk { abiFilters "arm64-v8a" }' app/build.gradle
-          grep -A 5 "defaultConfig {" app/build.gradle | head -10
+          sed -i '/applicationId/s/io\.nekohasekai\.sfa/io.quic_go.sfa/' app/build.gradle
+          sed -i '/defaultConfig {/a\        ndk {\n            abiFilters "arm64-v8a"\n        }' app/build.gradle
 
       - name: Decode Keystore
         run: |
@@ -236,11 +242,15 @@ jobs:
       - name: Build APK
         run: |
           cd sing-box/clients/android
+          
           VERSION="${{ github.event.inputs.version }}"
           VERSION_CODE=$(date +%Y%m%d%H)
+          
           echo "VERSION_NAME=$VERSION" > version.properties
           echo "VERSION_CODE=$VERSION_CODE" >> version.properties
+          
           chmod +x gradlew
+          
           ./gradlew :app:assembleOtherRelease \
             -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
             -Pandroid.injected.signing.store.password="${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" \
@@ -252,8 +262,17 @@ jobs:
       - name: Rename APK
         run: |
           cd sing-box/clients/android/app/build/outputs/apk/other/release
-          APK_FILE=$(ls *.apk | head -n 1)
-          mv "$APK_FILE" "SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
+          find . -type f -name "*.apk" ! -name "*arm64-v8a*" -delete 2>/dev/null || true
+          APK_FILE=$(ls *arm64-v8a*.apk 2>/dev/null | head -n 1 || ls *.apk 2>/dev/null | head -n 1)
+          TARGET_NAME="SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
+          if [ -n "$APK_FILE" ]; then
+            if [ "$APK_FILE" != "$TARGET_NAME" ]; then
+              mv "$APK_FILE" "$TARGET_NAME"
+            fi
+          else
+            echo "Error: No APK found!"
+            exit 1
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -291,8 +310,7 @@ jobs:
             #### Release Notes
             
             - Built without `with_naive_outbound` tag
-            - Android: arm64-v8a only, custom package name `io.quic_go.sfa`
-            - Linux/Windows: amd64v3 optimized
+            - Fixes and improvements
           files: dist/*
           draft: false
           prerelease: true
