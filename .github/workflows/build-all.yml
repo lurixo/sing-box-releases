@@ -26,7 +26,7 @@ jobs:
           cache: false
 
       - name: Checkout sing-box
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        uses: actions/checkout@v4
         with:
           repository: SagerNet/sing-box
           ref: ${{ github.event.inputs.sing_box_branch }}
@@ -77,9 +77,10 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ^1.25.4
+          cache: false
 
       - name: Checkout sing-box
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        uses: actions/checkout@v4
         with:
           repository: SagerNet/sing-box
           ref: ${{ github.event.inputs.sing_box_branch }}
@@ -139,15 +140,14 @@ jobs:
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r28
-          local-cache: true
 
       - name: Setup OpenJDK
-        run: |-
+        run: |
           sudo apt update && sudo apt install -y openjdk-17-jdk-headless
           /usr/lib/jvm/java-17-openjdk-amd64/bin/java --version
 
       - name: Checkout sing-box
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        uses: actions/checkout@v4
         with:
           repository: SagerNet/sing-box
           ref: ${{ github.event.inputs.sing_box_branch }}
@@ -169,18 +169,18 @@ jobs:
       - name: Remove naive outbound from build_libbox
         run: |
           cd sing-box
+          FILE="cmd/internal/build_libbox/main.go"
           echo "=== Original sharedTags ==="
-          grep -A 10 'sharedTags = append(sharedTags,' cmd/internal/build_libbox/main.go | head -15
-          
-          # 删除 with_naive_outbound 行
-          sed -i '/"with_naive_outbound"/d' cmd/internal/build_libbox/main.go
-          
+          grep 'sharedTags = append' "$FILE" || true
+          sed -i 's/, "with_naive_outbound"//g' "$FILE"
+          sed -i 's/"with_naive_outbound", //g' "$FILE"
+          sed -i 's/"with_naive_outbound"//g' "$FILE"
           echo ""
-          echo "=== Modified sharedTags (naive outbound removed) ==="
-          grep -A 10 'sharedTags = append(sharedTags,' cmd/internal/build_libbox/main.go | head -15
+          echo "=== Modified sharedTags ==="
+          grep 'sharedTags = append' "$FILE" || true
 
       - name: Build library
-        run: |-
+        run: |
           cd sing-box
           make lib_install
           export PATH="$PATH:$(go env GOPATH)/bin"
@@ -196,29 +196,17 @@ jobs:
             exit 1
           fi
           echo "libbox.aar size: $(ls -lh libbox.aar)"
-          
-          # 检查是否生成了 legacy 版本
-          if [ -f "libbox-legacy.aar" ]; then
-            echo "libbox-legacy.aar size: $(ls -lh libbox-legacy.aar)"
-          fi
-
-      - name: Gradle cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.gradle
-          key: gradle-${{ hashFiles('**/*.gradle') }}
 
       - name: Prepare Android client
         run: |
           cd sing-box
           mkdir -p clients/android/app/libs
-          # 使用修改后的 libbox.aar（已排除 naive）
           cp libbox.aar clients/android/app/libs/
 
       - name: Update package name and ABI filter
         run: |
           cd sing-box/clients/android
-          sed -i '/applicationId/s/io\.nekohasekai\.sfa/io.quic_go.sfa/' app/build.gradle
+          sed -i 's/io\.nekohasekai\.sfa/io.quic_go.sfa/g' app/build.gradle
           sed -i '/defaultConfig {/a\        ndk {\n            abiFilters "arm64-v8a"\n        }' app/build.gradle
 
       - name: Decode Keystore
@@ -228,15 +216,11 @@ jobs:
       - name: Build APK
         run: |
           cd sing-box/clients/android
-          
           VERSION="${{ github.event.inputs.version }}"
           VERSION_CODE=$(date +%Y%m%d%H)
-          
           echo "VERSION_NAME=$VERSION" > version.properties
           echo "VERSION_CODE=$VERSION_CODE" >> version.properties
-          
           chmod +x gradlew
-          
           ./gradlew :app:assembleOtherRelease \
             -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
             -Pandroid.injected.signing.store.password="${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" \
@@ -298,7 +282,6 @@ jobs:
             - Built without `with_naive_outbound` tag
             - Android: arm64-v8a only, custom package name `io.quic_go.sfa`
             - Linux/Windows: amd64v3 optimized
-            - All builds include: gvisor, quic, wireguard, utls, clash_api, tailscale, conntrack
           files: dist/*
           draft: false
           prerelease: true
