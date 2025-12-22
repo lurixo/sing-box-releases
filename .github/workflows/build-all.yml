@@ -26,7 +26,7 @@ jobs:
           cache: false
 
       - name: Checkout sing-box
-        uses: actions/checkout@v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: SagerNet/sing-box
           ref: ${{ github.event.inputs.sing_box_branch }}
@@ -76,10 +76,10 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.25.5
+          go-version: ^1.25.4
 
       - name: Checkout sing-box
-        uses: actions/checkout@v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: SagerNet/sing-box
           ref: ${{ github.event.inputs.sing_box_branch }}
@@ -128,28 +128,26 @@ jobs:
     env:
       JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
     steps:
-      - name: Setup OpenJDK
-        run: |
-          sudo apt update && sudo apt install -y openjdk-17-jdk-headless
-          java --version
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: ^1.25.5
           cache: false
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Setup Android NDK
         id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r28
+          local-cache: true
+
+      - name: Setup OpenJDK
+        run: |-
+          sudo apt update && sudo apt install -y openjdk-17-jdk-headless
+          /usr/lib/jvm/java-17-openjdk-amd64/bin/java --version
 
       - name: Checkout sing-box
-        uses: actions/checkout@v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           repository: SagerNet/sing-box
           ref: ${{ github.event.inputs.sing_box_branch }}
@@ -168,18 +166,12 @@ jobs:
           git fetch origin dev:dev 2>/dev/null || git fetch origin main:main 2>/dev/null || true
           git checkout dev 2>/dev/null || git checkout main 2>/dev/null || echo "Using current submodule commit"
 
-      - name: Install gomobile
-        run: |
+      - name: Build library
+        run: |-
           cd sing-box
           make lib_install
-          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-
-      - name: Build libbox.aar
-        run: |
-          cd sing-box
           export PATH="$PATH:$(go env GOPATH)/bin"
-          TAGS="with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm"
-          gomobile bind -v -androidapi 21 -javapkg=io.nekohasekai -libname=box -tags="$TAGS" -ldflags="-X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -buildid= -checklinkname=0" ./experimental/libbox
+          make lib_android
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
@@ -191,6 +183,12 @@ jobs:
             exit 1
           fi
           echo "libbox.aar size: $(ls -lh libbox.aar)"
+
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle
+          key: gradle-${{ hashFiles('**/*.gradle') }}
 
       - name: Prepare Android client
         run: |
