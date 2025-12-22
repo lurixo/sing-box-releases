@@ -13,6 +13,7 @@ on:
 
 env:
   TAGS_BASE: 'with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,badlinkname,tfogo_checklinkname0'
+  TAGS_ANDROID: 'with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm'
 
 jobs:
   build_linux:
@@ -171,7 +172,10 @@ jobs:
           cd sing-box
           make lib_install
           export PATH="$PATH:$(go env GOPATH)/bin"
-          make lib_android
+          gomobile bind -v -androidapi 21 -javapkg=io.nekohasekai -libname=box \
+            -tags="${TAGS_ANDROID}" \
+            -ldflags="-X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -buildid= -checklinkname=0" \
+            ./experimental/libbox
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
