@@ -142,7 +142,7 @@ jobs:
           ndk-version: r28
 
       - name: Setup OpenJDK
-        run: |-
+        run: |
           sudo apt update && sudo apt install -y openjdk-17-jdk-headless
           /usr/lib/jvm/java-17-openjdk-amd64/bin/java --version
 
@@ -171,45 +171,37 @@ jobs:
         run: |
           cd sing-box
           FILE="cmd/internal/build_libbox/main.go"
-          
           SHARED_TAGS=$(grep -oP '"with_[^"]+"|"badlinkname"|"tfogo_checklinkname0"' "$FILE" | \
                         tr -d '"' | \
                         grep -v 'with_naive_outbound' | \
                         sort -u | \
                         tr '\n' ',' | \
                         sed 's/,$//')
-          
           MEMC_TAGS=$(grep -A1 'memcTags = append' "$FILE" | \
                       grep -oP '"with_[^"]+"' | \
                       tr -d '"' | \
                       tr '\n' ',' | \
                       sed 's/,$//')
-          
           if [ -n "$MEMC_TAGS" ]; then
             ALL_TAGS="${SHARED_TAGS},${MEMC_TAGS}"
           else
             ALL_TAGS="${SHARED_TAGS}"
           fi
-          
           echo "Extracted tags (naive excluded): $ALL_TAGS"
           echo "tags=$ALL_TAGS" >> $GITHUB_OUTPUT
 
       - name: Change update channel
         run: |
           cd sing-box/clients/android
-          # 替换更新检查的仓库地址
           sed -i 's|SagerNet/sing-box|lurixo/sing-box-releases|g' \
             app/src/other/java/io/nekohasekai/sfa/vendor/GitHubUpdateChecker.kt
-          # 验证修改
-          echo "=== Modified RELEASES_URL ==="
           grep "RELEASES_URL" app/src/other/java/io/nekohasekai/sfa/vendor/GitHubUpdateChecker.kt
 
       - name: Build library
-        run: |-
+        run: |
           cd sing-box
           make lib_install
           export PATH="$PATH:$(go env GOPATH)/bin"
-          
           gomobile bind -v \
             -androidapi 21 \
             -javapkg=io.nekohasekai \
@@ -229,7 +221,7 @@ jobs:
             echo "Error: libbox.aar not found!"
             exit 1
           fi
-          echo "libbox.aar size: $(ls -lh libbox.aar)"
+          ls -lh libbox.aar
 
       - name: Prepare Android client
         run: |
@@ -248,17 +240,15 @@ jobs:
           echo "${{ secrets.RELEASE_KEYSTORE_FILE }}" | base64 -d > sing-box/clients/android/app/release.keystore
 
       - name: Build APK
+        id: build-apk
         run: |
           cd sing-box/clients/android
-          
           VERSION="${{ github.event.inputs.version }}"
-          VERSION_CODE=$(date +%Y%m%d%H)
-          
+          VERSION_CODE=$(date -u +%Y%m%d%H)
           echo "VERSION_NAME=$VERSION" > version.properties
           echo "VERSION_CODE=$VERSION_CODE" >> version.properties
-          
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
           chmod +x gradlew
-          
           ./gradlew :app:assembleOtherRelease \
             -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
             -Pandroid.injected.signing.store.password="${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" \
@@ -267,7 +257,7 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: Rename APK
+      - name: Rename APK and generate metadata
         run: |
           cd sing-box/clients/android/app/build/outputs/apk/other/release
           find . -type f -name "*.apk" ! -name "*arm64-v8a*" -delete 2>/dev/null || true
@@ -281,12 +271,21 @@ jobs:
             echo "Error: No APK found!"
             exit 1
           fi
+          cat > SFA-version-metadata.json << EOF
+          {
+              "version_code": ${{ steps.build-apk.outputs.version_code }},
+              "version_name": "${{ github.event.inputs.version }}"
+          }
+          EOF
+          cat SFA-version-metadata.json
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: sing-box/clients/android/app/build/outputs/apk/other/release/*.apk
+          path: |
+            sing-box/clients/android/app/build/outputs/apk/other/release/*.apk
+            sing-box/clients/android/app/build/outputs/apk/other/release/SFA-version-metadata.json
 
   publish:
     name: Publish Release
@@ -301,17 +300,9 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Generate version metadata
+      - name: Verify files
         run: |
-          VERSION="${{ github.event.inputs.version }}"
-          VERSION_CODE=$(date +%Y%m%d%H)
-          cat > dist/SFA-version-metadata.json << EOF
-          {
-              "version_code": ${VERSION_CODE},
-              "version_name": "${VERSION}"
-          }
-          EOF
-          echo "=== Generated metadata ==="
+          ls -la dist/
           cat dist/SFA-version-metadata.json
 
       - name: Delete older releases
