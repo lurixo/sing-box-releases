@@ -194,8 +194,8 @@ jobs:
         run: |
           cd sing-box/clients/android
           sed -i 's|SagerNet/sing-box|lurixo/sing-box-releases|g' \
-            app/src/other/java/io/nekohasekai/sfa/vendor/GitHubUpdateChecker.kt
-          grep "RELEASES_URL" app/src/other/java/io/nekohasekai/sfa/vendor/GitHubUpdateChecker.kt
+            app/src/github/java/io/nekohasekai/sfa/vendor/GitHubUpdateChecker.kt
+          grep "RELEASES_URL" app/src/github/java/io/nekohasekai/sfa/vendor/GitHubUpdateChecker.kt
 
       - name: Build library
         run: |
