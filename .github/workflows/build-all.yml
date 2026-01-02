@@ -46,7 +46,7 @@ jobs:
           mkdir -p dist
           go build -v -trimpath -o dist/sing-box \
             -tags "${TAGS_BASE}" \
-            -ldflags '-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -checklinkname=0' \
+            -ldflags '-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -X internal/godebug.defaultGODEBUG=multipathtcp=0 -checklinkname=0' \
             ./cmd/sing-box
         env:
           CGO_ENABLED: '0'
@@ -99,7 +99,7 @@ jobs:
           cd sing-box
           mkdir -p dist
           go build -v -trimpath -o dist/sing-box.exe -tags "$TAGS" `
-            -ldflags "-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -checklinkname=0" `
+            -ldflags "-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -X internal/godebug.defaultGODEBUG=multipathtcp=0 -checklinkname=0" `
             ./cmd/sing-box
         env:
           CGO_ENABLED: "0"
@@ -189,7 +189,7 @@ jobs:
             -trimpath \
             -buildvcs=false \
             -tags="${{ env.TAGS_ANDROID }}" \
-            -ldflags="-X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -s -w -buildid= -checklinkname=0" \
+            -ldflags="-X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -X internal/godebug.defaultGODEBUG=multipathtcp=0 -s -w -buildid= -checklinkname=0" \
             ./experimental/libbox
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
